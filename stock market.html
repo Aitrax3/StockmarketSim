@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Market Simulator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link href="templatemo-electric-xtra.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background:#0d0d0d; color:#fff; margin-top:80px; }
+    table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+    th, td { border: 1px solid #333; padding: 6px; text-align: center; vertical-align: middle; }
+    button { padding: 5px 10px; background:#777; color:#fff; border:none; border-radius:6px; cursor:pointer; transition:background 0.2s ease; }
+    button:hover:not(:disabled) { background:#aaa; }
+    button:disabled { background:#000; cursor:not-allowed; }
+    .history { font-size: 0.85em; color: #aaa; }
+    .arrow-up { color: limegreen; font-weight: bold; }
+    .arrow-down { color: red; font-weight: bold; }
+    #portfolio { font-weight: bold; font-size: 1.2em; margin-top:10px; }
+    #game-time { font-size: 1.1em; font-weight: bold; margin-top: 5px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.85); color: white; padding: 10px 15px; border-radius: 8px; opacity: 0; transform: translateY(20px); transition: opacity 0.3s, transform 0.3s; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    #event-box { margin:15px 0; background:#222; padding:10px; border-radius:6px; text-align:center; font-weight:bold; display:none; }
+    #ticker { position:fixed; top:50px; left:0; width:100%; background:#111; color:#0f0; font-size:1.2em; white-space:nowrap; overflow:hidden; box-shadow:0 2px 5px rgba(0,0,0,0.5); }
+    #ticker span { display:inline-block; padding-left:100%; animation: ticker 15s linear infinite; }
+    @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+    #portfolioChart { background:#111; margin-top:10px; border-radius:8px; padding:5px; }
+    .mini-chart { width:60px; height:20px; }
+    #reset-btn { margin-top:15px; background:#800; }
+  </style>
+</head>
+<body>
+        <!-- Animated Grid Background -->
+    <div class="grid-bg"></div>
+    <div class="gradient-overlay"></div>
+    <div class="scanlines"></div>
+
+    <!-- Animated Shapes -->
+    <div class="shapes-container">
+        <div class="shape shape-circle"></div>
+        <div class="shape shape-triangle"></div>
+        <div class="shape shape-square"></div>
+    </div>
+
+    <!-- Floating Particles -->
+    <div id="particles"></div>
+<nav id="navbar" style="position:fixed; top:0; width:100%; background:#111; padding:10px; z-index:10; display:flex; justify-content:center; align-items:center;">
+  <span class="logo-text" style="font-size:1.5em; font-weight:bold;">NEXALINGO</span>
+</nav>
+
+<div id="ticker"><span id="ticker-text">Welcome to the market – good luck trading!</span></div>
+
+<h1>Stock Market Simulator</h1>
+<p><strong>Balance:</strong> <span id="balance">5000</span> €</p>
+<p id="portfolio">Portfolio Value: 5000 €</p>
+<p id="game-time">Day 1 – 09:00</p>
+<button id="reset-btn" onclick="resetGame()">Reset Game</button>
+<div id="event-box"></div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Stock</th>
+      <th>Price (€)</th>
+      <th>Mini Chart</th>
+      <th>History (last 5)</th>
+      <th>Change</th>
+      <th>Owned</th>
+      <th>Buy</th>
+      <th>Sell</th>
+    </tr>
+  </thead>
+  <tbody id="stock-table"></tbody>
+</table>
+
+<canvas id="portfolioChart" height="80"></canvas>
+<div id="toast" class="toast"></div>
+
+<script>
+let stocks = {
+  "TechCorp": { price: 120, volatility: 0.1, owned: 0, history: [] },
+  "HealthInc": { price: 80, volatility: 0.08, owned: 0, history: [] },
+  "AutoSys": { price: 150, volatility: 0.12, owned: 0, history: [] },
+  "Meta": {price:20000,volatility:0.07,owned:0,history:[]},
+  "Nestle": {price:500,volatility:0.05,owned:0,history:[]},
+  "Strabag": {price:2500,volatility:0.06,owned:0,history:[]},
+  "CASABLANCA": {price:120000,volatility:0.15,owned:0,history:[]},
+  "BitCoin": {price:40000,volatility:0.2,owned:0,history:[]},
+  "ShellInc": {price:200,volatility:0.09,owned:0,history:[]},
+  "Coal&Steel": {price:900,volatility:0.05,owned:0,history:[]},
+  "Google": {price:30000,volatility:0.08,owned:0,history:[]},
+  "Apple": {price:15000,volatility:0.1,owned:0,history:[]},
+  "Tesla": {price:700,volatility:0.15,owned:0,history:[]},
+  "Gold": {price:8000,volatility:0.03,owned:0,history:[]}
+};
+let balance = 5000;
+let dailyProfit = 0;
+let portfolioHistory = [];
+let gameDay = 1;
+let gameHour = 9;
+let gameMinute = 0;
+
+const ctx = document.getElementById('portfolioChart').getContext('2d');
+const portfolioChart = new Chart(ctx, {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'Portfolio Value', data: [], borderColor: '#0f0', fill:false, tension:0.3 }]},
+  options: { responsive:true, scales:{ x:{display:false}, y:{display:true} } }
+});
+
+const eventBox = document.getElementById("event-box");
+const tickerText = document.getElementById("ticker-text");
+const gameTimeDisplay = document.getElementById("game-time");
+
+function updateGameTime() {
+  gameMinute += 15;
+  if (gameMinute >= 60) { gameMinute = 0; gameHour++; }
+  if (gameHour >= 17) { gameHour = 9; gameDay++; endOfDay(); }
+  gameTimeDisplay.textContent = `Day ${gameDay} – ${gameHour.toString().padStart(2,"0")}:${gameMinute.toString().padStart(2,"0")}`;
+}
+
+function drawMiniChart(id, history) {
+  const ctx = document.getElementById(id).getContext("2d");
+  const color = (history.length >= 2 && history[history.length-1] < history[history.length-2]) ? "red" : "#0f0";
+  new Chart(ctx, {
+    type: 'line',
+    data: { labels: history.map((_,i)=>i), datasets: [{ data: history, borderColor: color, borderWidth: 1, fill: false, pointRadius: 0, tension: 0.3 }] },
+    options: { responsive: false, maintainAspectRatio: false, scales: { x: { display:false }, y: { display:false } }, plugins: { legend: { display: false } } }
+  });
+}
+
+function renderTable() {
+  const table = document.getElementById("stock-table");
+  table.innerHTML = "";
+  let portfolioValue = balance;
+  for (const name in stocks) {
+    const stock = stocks[name];
+    portfolioValue += stock.owned * stock.price;
+    const historyDisplay = stock.history.slice(-5).map(p => p.toFixed(2)).join(" → ");
+    let changeInfo = "—";
+    if (stock.history.length >= 2) {
+      const prev = stock.history[stock.history.length - 2];
+      const curr = stock.history[stock.history.length - 1];
+      const diff = curr - prev;
+      const percent = ((diff / prev) * 100).toFixed(2);
+      changeInfo = diff >= 0 ? `<span class="arrow-up">⬆️ ${percent}%</span>` : `<span class="arrow-down">⬇️ ${Math.abs(percent)}%</span>`;
+    }
+    const row = document.createElement("tr");
+    const canvasId = `chart-${name}`;
+    row.innerHTML = `
+      <td>${name}</td>
+      <td>${stock.price.toFixed(2)}</td>
+      <td><canvas id="${canvasId}" class="mini-chart"></canvas></td>
+      <td class="history">${historyDisplay}</td>
+      <td>${changeInfo}</td>
+      <td>${stock.owned}</td>
+      <td>
+        <button onclick="buyStock('${name}')" ${balance < stock.price ? "disabled" : ""}>Buy</button>
+        <button onclick="buyMaxStocks('${name}')" ${balance < stock.price ? "disabled" : ""} style="margin-left:5px;background:#2d7;">Buy Max</button>
+      </td>
+      <td>
+        <button onclick="sellStock('${name}')" ${stock.owned === 0 ? "disabled" : ""}>Sell</button>
+        <button onclick="sellAllStocks('${name}')" ${stock.owned === 0 ? "disabled" : ""} style="margin-left:5px;background:#444;">Sell All</button>
+      </td>`;
+    table.appendChild(row);
+    drawMiniChart(canvasId, stock.history.slice(-10));
+  }
+  document.getElementById("balance").textContent = balance.toFixed(2);
+  document.getElementById("portfolio").textContent = "Portfolio Value: " + portfolioValue.toFixed(2) + " €";
+  portfolioHistory.push(portfolioValue);
+  if (portfolioHistory.length > 20) portfolioHistory.shift();
+  portfolioChart.data.labels = portfolioHistory.map((_,i)=>i);
+  portfolioChart.data.datasets[0].data = portfolioHistory;
+  portfolioChart.update();
+  saveGame();
+}
+
+function updatePrices() {
+  for (const name in stocks) {
+    const stock = stocks[name];
+    let volatility = stock.volatility;
+    if (gameHour >= 15) volatility *= 1.5;
+    const percentChange = (Math.random() - 0.5) * 2 * volatility;
+    stock.price = Math.max(1, stock.price * (1 + percentChange));
+    stock.history.push(stock.price);
+    if (stock.history.length > 15) stock.history.shift();
+  }
+  renderTable();
+  updateGameTime();
+}
+
+function triggerEvent() {
+  const keys = Object.keys(stocks);
+  const randomStock = keys[Math.floor(Math.random()*keys.length)];
+  const stock = stocks[randomStock];
+  const up = Math.random() > 0.5;
+  const impact = up ? 1+Math.random()*0.3 : 1-Math.random()*0.3;
+  stock.price = Math.max(1, stock.price * impact);
+  stock.history.push(stock.price);
+  eventBox.style.display = "block";
+  eventBox.textContent = up ? `${randomStock} is up due to good news!` : `${randomStock} drops after a scandal!`;
+  tickerText.textContent = eventBox.textContent + " | Market is reacting...";
+  setTimeout(()=>eventBox.style.display="none",4000);
+  renderTable();
+}
+
+function showToast(text) {
+  const toast = document.getElementById("toast");
+  toast.textContent = text;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2500);
+}
+
+function buyStock(name) {
+  const stock = stocks[name];
+  if (balance >= stock.price) {
+    balance -= stock.price;
+    stock.owned++;
+    dailyProfit -= stock.price;
+    showToast("+ Bought " + name + " for " + stock.price.toFixed(2) + " €");
+    renderTable();
+  }
+}
+
+function buyMaxStocks(name) {
+  const stock = stocks[name];
+  const maxShares = Math.floor(balance / stock.price);
+  if (maxShares > 0) {
+    const totalCost = maxShares * stock.price;
+    balance -= totalCost;
+    stock.owned += maxShares;
+    dailyProfit -= totalCost;
+    showToast("+ Bought MAX (" + maxShares + ") " + name + " for " + totalCost.toFixed(2) + " €");
+    renderTable();
+  }
+}
+
+function sellStock(name) {
+  const stock = stocks[name];
+  if (stock.owned > 0) {
+    balance += stock.price;
+    stock.owned--;
+    dailyProfit += stock.price;
+    showToast("- Sold 1 share of " + name + " for " + stock.price.toFixed(2) + " €");
+    renderTable();
+  }
+}
+
+function sellAllStocks(name) {
+  const stock = stocks[name];
+  if (stock.owned > 0) {
+    const totalValue = stock.owned * stock.price;
+    balance += totalValue;
+    dailyProfit += totalValue;
+    showToast("- Sold ALL " + stock.owned + " shares of " + name + " for " + totalValue.toFixed(2) + " €");
+    stock.owned = 0;
+    renderTable();
+  }
+}
+
+function endOfDay() {
+  let dividends = 0;
+  for (const name of ["Nestle","ShellInc","Coal&Steel"]) {
+    const stock = stocks[name];
+    if (stock.owned > 0) {
+      const payout = stock.owned * stock.price * (0.01 + Math.random()*0.02);
+      balance += payout;
+      dividends += payout;
+    }
+  }
+  let tax = 0;
+  if (dailyProfit > 0) {
+    tax = dailyProfit * 0.1;
+    balance -= tax;
+  }
+  showToast(`📅 End of day – Dividends: +${dividends.toFixed(2)} € | Taxes: -${tax.toFixed(2)} €`);
+  dailyProfit = 0;
+  renderTable();
+}
+
+function initHistory() {
+  for (const name in stocks) stocks[name].history = [stocks[name].price];
+}
+
+function saveGame() {
+  localStorage.setItem("stocks", JSON.stringify(stocks));
+  localStorage.setItem("balance", balance);
+  localStorage.setItem("gameDay", gameDay);
+  localStorage.setItem("gameHour", gameHour);
+  localStorage.setItem("gameMinute", gameMinute);
+}
+
+function loadGame() {
+  const savedStocks = localStorage.getItem("stocks");
+  const savedBalance = localStorage.getItem("balance");
+  const savedDay = localStorage.getItem("gameDay");
+  const savedHour = localStorage.getItem("gameHour");
+  const savedMinute = localStorage.getItem("gameMinute");
+  if (savedStocks) stocks = JSON.parse(savedStocks);
+  if (savedBalance) balance = parseFloat(savedBalance);
+  if (savedDay) gameDay = parseInt(savedDay);
+  if (savedHour) gameHour = parseInt(savedHour);
+  if (savedMinute) gameMinute = parseInt(savedMinute);
+  gameTimeDisplay.textContent = `Day ${gameDay} – ${gameHour.toString().padStart(2,"0")}:${gameMinute.toString().padStart(2,"0")}`;
+}
+
+function resetGame() {
+  localStorage.clear();
+  location.reload();
+}
+
+loadGame();
+initHistory();
+renderTable();
+setInterval(updatePrices, 15000);
+setInterval(triggerEvent, 60000);
+</script>
+</body>
+</html>
