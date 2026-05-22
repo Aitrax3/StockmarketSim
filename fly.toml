@@ -22,3 +22,8 @@ primary_region = "fra" # Frankfurt (oder lhr, ams, etc.)
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
+    [[services]]
+  internal_port = 80
+  protocol = "tcp"
+  # ... restliche Config
+
